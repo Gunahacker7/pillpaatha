@@ -22,6 +22,27 @@ jobs:
           flutter-version: '3.47.8'
           channel: stable
 
+      # The app's bundled fonts (Poppins + Noto Sans Tamil, both
+      # open-licensed) are fetched at build time instead of being
+      # committed as binaries to this repo. Pinned gstatic URLs —
+      # resolved from the Google Fonts css2 API and hash-verified
+      # against the developer's local copies (V2, 23 Nov 2026):
+      #   Poppins-Regular.ttf    sha256 cdedb1729acac414…  154628 B
+      #   Poppins-SemiBold.ttf   sha256 dae40ca7b35fe750…  151516 B
+      #   Poppins-Bold.ttf       sha256 1984efdda0fbe207…  150292 B
+      #   Poppins-ExtraBold.ttf  sha256 5e8a5c3c2a56c3bc…  149072 B
+      - name: Fetch bundled fonts
+        run: |
+          mkdir -p assets/fonts
+          cd assets/fonts
+          curl -fsSL -o Poppins-Regular.ttf "https://fonts.gstatic.com/s/poppins/v24/pxiEyp8kv8JHgFVrFJA.ttf"
+          curl -fsSL -o Poppins-SemiBold.ttf "https://fonts.gstatic.com/s/poppins/v24/pxiByp8kv8JHgFVrLEj6V1s.ttf"
+          curl -fsSL -o Poppins-Bold.ttf "https://fonts.gstatic.com/s/poppins/v24/pxiByp8kv8JHgFVrLCz7V1s.ttf"
+          curl -fsSL -o Poppins-ExtraBold.ttf "https://fonts.gstatic.com/s/poppins/v24/pxiByp8kv8JHgFVrLDD4V1s.ttf"
+          curl -fsSL -o NotoSansTamil-Regular.ttf "https://fonts.gstatic.com/s/notosanstamil/v31/ieVc2YdFI3GCY6SyQy1KfStzYKZgzN1z4LKDbeZce-0429tBManUktuex7vGo70R.ttf"
+          curl -fsSL -o NotoSansTamil-Bold.ttf "https://fonts.gstatic.com/s/notosanstamil/v31/ieVc2YdFI3GCY6SyQy1KfStzYKZgzN1z4LKDbeZce-0429tBManUktuex7shpL0R.ttf"
+          ls -la
+
       # google-services.json is never committed to this public repo.
       # It is stored base64-encoded in the GOOGLE_SERVICES_JSON Actions
       # secret and restored here so the google-services Gradle plugin
