@@ -1,7 +1,9 @@
 name: Build release APKs
 
+
 on:
   workflow_dispatch:
+
 
 jobs:
   build:
@@ -10,17 +12,20 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v4
 
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.8'
           channel: stable
+
 
       # The app's bundled fonts (Poppins + Noto Sans Tamil, both
       # open-licensed) are fetched at build time instead of being
@@ -43,6 +48,7 @@ jobs:
           curl -fsSL -o NotoSansTamil-Bold.ttf "https://fonts.gstatic.com/s/notosanstamil/v31/ieVc2YdFI3GCY6SyQy1KfStzYKZgzN1z4LKDbeZce-0429tBManUktuex7shpL0R.ttf"
           ls -la
 
+
       # google-services.json is never committed to this public repo.
       # It is stored base64-encoded in the GOOGLE_SERVICES_JSON Actions
       # secret and restored here so the google-services Gradle plugin
@@ -57,12 +63,10 @@ jobs:
           fi
           echo "$GOOGLE_SERVICES_JSON" | base64 --decode > android/app/google-services.json
 
+
       - name: Build release APKs (split per ABI)
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi --dart-define=APP_CHECK_DEBUG_TOKEN=${{ secrets.APP_CHECK_DEBUG_TOKEN }}
+
 
       - name: Upload APKs as an artifact
         uses: actions/upload-artifact@v4
-        with:
-          name: pillpaatha-release-apks
-          path: build/app/outputs/flutter-apk/*-release.apk
-          if-no-files-found: error
