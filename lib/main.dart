@@ -1,3 +1,4 @@
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
@@ -23,6 +24,25 @@ Future<void> main() async {
     firebaseReady = true;
   } catch (_) {
     firebaseReady = false;
+  }
+
+  // App Check: AI Logic enforces App Check, so Gemini calls are
+  // rejected without a valid token. This is a sideloaded hackathon
+  // build (not on the Play Store), so Play Integrity cannot attest
+  // it — use the DEBUG provider here and register the token shown in
+  // the app (Scan screen) in the Firebase console.
+  // FOR A PLAY STORE RELEASE: swap AndroidProvider.debug below for
+  // AndroidProvider.playIntegrity.
+  if (firebaseReady) {
+    try {
+      await FirebaseAppCheck.instance.activate(
+        providerAndroid: const AndroidDebugProvider(),
+        providerApple: const AppleDebugProvider(),
+      );
+    } catch (_) {
+      // Never block startup on App Check; generation will surface
+      // any token problem and offer the labelled sample instead.
+    }
   }
 
   final store = AppStore(LocalScheduleRepository());

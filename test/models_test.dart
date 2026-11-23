@@ -25,6 +25,31 @@ void main() {
       );
       expect(meds, isEmpty);
     });
+
+    test('numbered prescription: strips list numbers, skips dose lines',
+        () {
+      final meds = OcrService.parseMedicineLines(
+        '1. Metformin 500 mg\n'
+        '1 tablet - Morning & Night - After food\n'
+        '2. Metoprolol 25 mg\n'
+        '1 tablet - Morning - After food\n'
+        '3. Amlodipine 5 mg\n'
+        '1 tablet - Morning - After food\n'
+        '4. Atorvastatin 10 mg\n'
+        '1 tablet - Night - After food\n'
+        '5. Paracetamol 650 mg\n'
+        '1 tablet - Only when fever (SOS)',
+      );
+      expect(meds.length, 5);
+      expect(
+        meds.map((m) => m.name).toList(),
+        ['Metformin', 'Metoprolol', 'Amlodipine', 'Atorvastatin', 'Paracetamol'],
+      );
+      expect(
+        meds.map((m) => m.strength).toList(),
+        ['500 mg', '25 mg', '5 mg', '10 mg', '650 mg'],
+      );
+    });
   });
 
   group('Sample schedule service', () {

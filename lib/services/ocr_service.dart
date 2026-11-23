@@ -36,6 +36,46 @@ class OcrService {
 
   static final _strengthPattern =
       RegExp(r'(\d+(?:\.\d+)?\s?(?:mg|mcg|µg|ml|g|iu)\b)', caseSensitive: false);
+
+  /// Leading list numbering on prescription lines: "3. Amlodipine",
+  /// "3) Amlodipine". Stripped before parsing so the number never
+  /// leaks into the medicine name.
+  static final _listNumberPattern = RegExp(r'^\s*\d+\s*[.\)]\s*');
+
+  /// Words that mark a line as a dose INSTRUCTION ("1 tablet -
+  /// Morning - After food") rather than a medicine name. Such lines
+  /// carry no strength of their own; without this check they became
+  /// bogus medicine rows like "1 - Morning - After food".
+  static final _instructionWords = <String>[
+    'morning',
+    'afternoon',
+    'evening',
+    'night',
+    'after food',
+    'before food',
+    'with food',
+    'fever',
+    'per day',
+    'twice',
+    'thrice',
+    'once a day',
+  ];
+  static final _sosWord = RegExp(r'\bsos\b', caseSensitive: false);
+
+  /// A line that starts with a quantity + dosage form ("1 tablet",
+  /// "2 capsules") is an instruction line, not a medicine name.
+  static final _quantityFormStart = RegExp(
+    r'^\d+(?:\.\d+)?\s+(?:tablets?|capsules?|drops?|sachets?|puffs?)\b',
+    caseSensitive: false,
+  );
+
+  static bool _isDoseInstructionLine(String line) {
+    if (_quantityFormStart.hasMatch(line)) return true;
+    if (_sosWord.hasMatch(line)) return true;
+    final lower = line.toLowerCase();
+    return _instructionWords.any(lower.contains);
+  }
+
   static final _formWords = <String>[
     'tablet',
     'tablets',
@@ -60,10 +100,14 @@ class OcrService {
     final out = <MedicineEntry>[];
     var n = 0;
     for (final rawLine in text.split('\n')) {
-      final line = rawLine.trim();
+      final line =
+          rawLine.trim().replaceFirst(_listNumberPattern, '').trim();
       if (line.length < 3) continue;
       final lower = line.toLowerCase();
       final strengthMatch = _strengthPattern.firstMatch(line);
+      // A strength-less line that only says WHEN/HOW to take a dose
+      // belongs to the previous medicine — never a medicine itself.
+      if (strengthMatch == null && _isDoseInstructionLine(line)) continue;
       final hasForm = _formWords.any(lower.contains);
       if (strengthMatch == null && !hasForm) continue;
 

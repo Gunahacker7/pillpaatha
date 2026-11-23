@@ -1,4 +1,6 @@
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../data/app_store.dart';
@@ -139,35 +141,84 @@ class _ScanScreenState extends State<ScanScreen> {
       widget.onScheduleReady();
     } on ScheduleGenerationException catch (e) {
       if (!mounted) return;
-      final useSample = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Could not generate · முடியவில்லை'),
-          content: Text(
-            '${e.message}\n\nYou can view a clearly-labelled SAMPLE '
-            'schedule instead, to see how the app works.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Show sample'),
-            ),
-          ],
-        ),
-      );
-      if (useSample == true) await _generate(forceSample: true);
+      await _offerSampleFallback(e.message);
     } catch (e) {
+      // Any other failure (network, App Check token, parsing…) gets
+      // the same way out as a ScheduleGenerationException — never a
+      // dead end. The sample is only used when the user picks it in
+      // the dialog, and it stays labelled via isSample.
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Generation failed: $e')),
-      );
+      await _offerSampleFallback('Generation failed: $e');
     } finally {
       if (mounted) setState(() => _generating = false);
     }
+  }
+
+  /// Explains why generation failed and offers the clearly-labelled
+  /// SAMPLE schedule as the user's choice — never substituted
+  /// silently behind their back.
+  Future<void> _offerSampleFallback(String message) async {
+    final useSample = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Could not generate · முடியவில்லை'),
+        content: Text(
+          '$message\n\nYou can view a clearly-labelled SAMPLE '
+          'schedule instead, to see how the app works.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Use sample schedule · மாதிரி'),
+          ),
+        ],
+      ),
+    );
+    if (useSample == true) await _generate(forceSample: true);
+  }
+
+  /// Setup aid for this sideloaded demo build: App Check runs on the
+  /// debug provider, and its token must be registered once in the
+  /// Firebase console (App Check → Apps → Manage debug tokens)
+  /// before Gemini calls are accepted. This shows the token so it
+  /// can be copied across.
+  Future<void> _showAppCheckToken() async {
+    String tokenText;
+    try {
+      final token = await FirebaseAppCheck.instance.getToken();
+      tokenText = token ??
+          'No token was returned. Restart the app, keep the phone '
+              'online, and try again.';
+    } catch (e) {
+      tokenText = 'Could not get a token: $e';
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('App Check setup token'),
+        content: SingleChildScrollView(
+          child: SelectableText(tokenText),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: tokenText));
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Copy'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -303,6 +354,21 @@ class _ScanScreenState extends State<ScanScreen> {
                   style: TextStyle(color: PillTheme.inkSoft, fontSize: 14),
                 ),
               ),
+            if (widget.firebaseReady) ...[
+              const SizedBox(height: 24),
+              // Discreet setup aid for the sideloaded demo build:
+              // shows the App Check debug token so it can be
+              // registered in the Firebase console.
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.key_outlined, size: 18),
+                title: const Text(
+                  'App Check setup token · தொடு செய்து நகலெடுக்கவும்',
+                  style: TextStyle(fontSize: 13, color: PillTheme.inkSoft),
+                ),
+                onTap: _showAppCheckToken,
+              ),
+            ],
           ],
         );
       },

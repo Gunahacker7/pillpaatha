@@ -2,7 +2,7 @@ name: pillpaatha
 description: "PillPaatha — photo a medicine strip or prescription, get a simple Tamil + English dosage schedule with reminders. Built for #BuildHybridAI 2026."
 publish_to: 'none'
 
-version: 0.1.0+1
+version: 0.1.1+2
 
 environment:
   sdk: ^3.13.7
@@ -33,6 +33,7 @@ dependencies:
   # Local persistence for medicines, schedule and dose status.
   # (Data layer is abstracted so Firestore sync can slot in later.)
   shared_preferences: ^2.3.3
+  firebase_app_check: ^0.4.9
 
 dev_dependencies:
   flutter_test:
