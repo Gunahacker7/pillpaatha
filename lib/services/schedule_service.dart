@@ -80,10 +80,20 @@ List<ScheduleItem> applyLookAlikeFlags(List<ScheduleItem> items) {
 
 /// Gemini via Firebase AI Logic (Firebase's `firebase_ai` package).
 class GeminiScheduleService implements ScheduleService {
-  // 2026-11-23: gemini-2.5-flash was retired for new users (the API
-  // error names its replacement explicitly) — use the model the API
-  // recommends for this project.
-  static const _modelName = 'gemini-3.8-flash';
+  // Model chain, tried in order until one answers. Why a chain:
+  // 2026-11-23 the retired gemini-2.5-flash hard-failed for new
+  // users, and its named replacement gemini-3.8-flash (plus 3.7)
+  // returned 500/503 "high demand" — while gemini-3.5-flash-lite
+  // answered instantly on a live probe. Newest-first is fragile;
+  // reliability-first wins: a busy or retired model must never be
+  // a dead end for the user.
+  static const _modelChain = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.8-flash',
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
+    'gemini-flash-latest',
+  ];
 
   static final _schema = Schema.object(
     properties: {
@@ -131,13 +141,26 @@ class GeminiScheduleService implements ScheduleService {
     },
   );
 
+  static bool _isTransient(Object e) {
+    final s = e.toString();
+    return s.contains('high demand') ||
+        s.contains('UNAVAILABLE') ||
+        s.contains('overloaded') ||
+        s.contains('INTERNAL') ||
+        s.contains('[500]') ||
+        s.contains('[503]') ||
+        s.contains('code: 500') ||
+        s.contains('code: 503');
+  }
+
   @override
   Future<GeneratedSchedule> generate(
     List<MedicineEntry> medicines,
     String rawOcrText,
   ) async {
-    final model = FirebaseAI.googleAI().generativeModel(
-      model: _modelName,
+    GenerativeModel buildModel(String name) =>
+        FirebaseAI.googleAI().generativeModel(
+      model: name,
       generationConfig: GenerationConfig(
         responseMimeType: 'application/json',
         responseSchema: _schema,
@@ -168,11 +191,44 @@ class GeminiScheduleService implements ScheduleService {
         'Return the daily schedule as JSON matching the schema. One '
         'item per dose per medicine.';
 
-    final response = await model.generateContent([Content.text(prompt)]);
-    final text = response.text;
-    if (text == null || text.isEmpty) {
+    // Walk the model chain: per model, retry transient (busy /
+    // server) errors with backoff; any other failure moves straight
+    // to the next model. Only when every model has failed do we
+    // give up — with a plain-language message, never a raw error.
+    String? text;
+    var lastWasTransient = false;
+    for (final name in _modelChain) {
+      final model = buildModel(name);
+      for (var attempt = 0; attempt < 3 && text == null; attempt++) {
+        try {
+          final response =
+              await model.generateContent([Content.text(prompt)]);
+          final t = response.text;
+          if (t != null && t.isNotEmpty) {
+            text = t;
+          } else {
+            lastWasTransient = false;
+          }
+        } catch (e) {
+          lastWasTransient = _isTransient(e);
+          if (lastWasTransient && attempt < 2) {
+            await Future<void>.delayed(
+              Duration(seconds: attempt == 0 ? 3 : 8),
+            );
+          } else {
+            break;
+          }
+        }
+      }
+      if (text != null) break;
+    }
+    if (text == null) {
       throw ScheduleGenerationException(
-        'Gemini returned an empty response. Please try again.',
+        lastWasTransient
+            ? 'Google\'s AI service is very busy right now. Please '
+                'wait a minute and tap Generate again.'
+            : 'Could not reach Google\'s AI service. Please check '
+                'your internet connection and try again.',
       );
     }
 

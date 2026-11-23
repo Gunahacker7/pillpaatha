@@ -107,13 +107,20 @@ class _ScanScreenState extends State<ScanScreen> {
     } on ScheduleGenerationException catch (e) {
       if (!mounted) return;
       await _offerSampleFallback(e.message);
-    } catch (e) {
+    } catch (_) {
       // Any other failure (network, App Check token, parsing…) gets
       // the same way out as a ScheduleGenerationException — never a
       // dead end. The sample is only used when the user picks it in
       // the dialog, and it stays labelled via isSample.
       if (!mounted) return;
-      await _offerSampleFallback('Generation failed: $e');
+      // Never dump a raw exception at the user — a plain-language
+      // line only. (The service already converts model/busy errors
+      // into friendly ScheduleGenerationExceptions; this catch is
+      // for anything unexpected, e.g. a parse failure.)
+      await _offerSampleFallback(tr(
+        'Something went wrong while generating. Please try again.',
+        'உருவாக்கும் போது சிக்கல் ஏற்பட்டது. மீண்டும் முயற்சிக்கவும்.',
+      ));
     } finally {
       if (mounted) setState(() => _generating = false);
     }
