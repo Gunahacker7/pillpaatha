@@ -2,6 +2,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../l10n.dart';
 import '../models.dart';
 
 /// Dose reminders via flutter_local_notifications.
@@ -12,12 +13,21 @@ import '../models.dart';
 /// schedule item id so the store can record the status — the same
 /// status the caregiver view reads. A snooze additionally schedules
 /// a one-off reminder 15 minutes later via [scheduleSnooze].
+///
+/// All notification text follows the app's ONE display language
+/// ([language], kept in step with the store by main.dart).
 class NotificationService {
   NotificationService({required this.onAction});
 
   /// Called with (scheduleItemId, 'taken' | 'skipped' | 'snoozed')
   /// when the user taps an action on a reminder notification.
   final void Function(String itemId, String action) onAction;
+
+  /// The language notification titles, bodies and action buttons
+  /// are written in. Updated by main.dart whenever the user
+  /// switches the app language; already-scheduled reminders pick
+  /// the new language up at the next re-schedule.
+  AppLanguage language = AppLanguage.ta;
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -31,7 +41,9 @@ class NotificationService {
   static const skipActionId = 'pp_skip';
   static const snoozeActionId = 'pp_snooze';
   static const _channelId = 'pillpaatha_doses';
-  static const _channelName = 'Dose reminders · மருந்து நினைவூட்டல்';
+
+  String get _channelName =>
+      language.pick('Dose reminders', 'மருந்து நினைவூட்டல்');
 
   /// How long a snoozed dose waits before reminding again.
   static const snoozeDelay = Duration(minutes: 15);
@@ -42,23 +54,40 @@ class NotificationService {
   static int _snoozeId(ScheduleItem item) =>
       0x40000000 | (item.id.hashCode & 0x3fffffff);
 
-  static const _actions = <AndroidNotificationAction>[
-    AndroidNotificationAction(
-      takenActionId,
-      'Taken ✓',
-      showsUserInterface: true,
-    ),
-    AndroidNotificationAction(
-      skipActionId,
-      'Skip',
-      showsUserInterface: true,
-    ),
-    AndroidNotificationAction(
-      snoozeActionId,
-      'Snooze · சற்று பிறகு',
-      showsUserInterface: true,
-    ),
-  ];
+  List<AndroidNotificationAction> get _actions => [
+        AndroidNotificationAction(
+          takenActionId,
+          language.pick('Taken ✓', 'எடுத்தாச்சு ✓'),
+          showsUserInterface: true,
+        ),
+        AndroidNotificationAction(
+          skipActionId,
+          language.pick('Skip', 'தவிர்'),
+          showsUserInterface: true,
+        ),
+        AndroidNotificationAction(
+          snoozeActionId,
+          language.pick('Snooze', 'சற்று பிறகு'),
+          showsUserInterface: true,
+        ),
+      ];
+
+  NotificationDetails get _details => NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: language.pick(
+            'Daily medicine dose reminders',
+            'தினசரி மருந்து நினைவூட்டல்',
+          ),
+          importance: Importance.high,
+          priority: Priority.high,
+          actions: _actions,
+        ),
+        iOS: const DarwinNotificationDetails(
+          categoryIdentifier: 'pillpaatha_dose',
+        ),
+      );
 
   Future<void> init() async {
     tzdata.initializeTimeZones();
@@ -106,22 +135,13 @@ class NotificationService {
     for (final item in items) {
       await _plugin.zonedSchedule(
         _dailyId(item),
-        'Time for ${item.medicineName} · மருந்து நேரம்',
-        '${item.dose} · ${item.foodRelation.en}',
-        _nextInstance(item),
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            _channelId,
-            _channelName,
-            channelDescription: 'Daily medicine dose reminders',
-            importance: Importance.high,
-            priority: Priority.high,
-            actions: _actions,
-          ),
-          iOS: DarwinNotificationDetails(
-            categoryIdentifier: 'pillpaatha_dose',
-          ),
+        language.pick(
+          'Time for ${item.medicineName}',
+          '${item.medicineName} சாப்பிடும் நேரம்',
         ),
+        '${item.doseFor(language)} · ${item.foodRelation.labelFor(language)}',
+        _nextInstance(item),
+        _details,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         matchDateTimeComponents: DateTimeComponents.time, // daily repeat
         payload: item.id,
@@ -148,23 +168,14 @@ class NotificationService {
   Future<void> _postSnooze(ScheduleItem item, tz.TZDateTime when) async {
     await _plugin.zonedSchedule(
       _snoozeId(item),
-      'Reminder: ${item.medicineName} · மருந்து நினைவூட்டல்',
-      '${item.dose} · ${item.foodRelation.en} '
-          '(snoozed · ஒத்திவைக்கப்பட்டது)',
-      when,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelId,
-          _channelName,
-          channelDescription: 'Daily medicine dose reminders',
-          importance: Importance.high,
-          priority: Priority.high,
-          actions: _actions,
-        ),
-        iOS: DarwinNotificationDetails(
-          categoryIdentifier: 'pillpaatha_dose',
-        ),
+      language.pick(
+        'Reminder: ${item.medicineName}',
+        'நினைவூட்டல்: ${item.medicineName}',
       ),
+      '${item.doseFor(language)} · ${item.foodRelation.labelFor(language)} '
+      '${language.pick('(snoozed)', '(ஒத்திவைக்கப்பட்டது)')}',
+      when,
+      _details,
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       payload: item.id,
     );

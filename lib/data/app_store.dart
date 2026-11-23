@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../l10n.dart';
 import '../models.dart';
 
 /// Persistence boundary for PillPaatha.
@@ -211,6 +212,23 @@ class AppStore extends ChangeNotifier {
   EmergencyContact? emergencyContact;
   bool loaded = false;
 
+  /// The ONE language the whole UI speaks right now (Tamil by
+  /// default — PillPaatha's users are Tamil-first; one tap in the
+  /// AppBar switches to English). Persisted across launches.
+  AppLanguage language = AppLanguage.ta;
+
+  static const _kLanguage = 'pp_language';
+
+  /// Picks the string for the current language.
+  String tr(String en, String ta) => language.pick(en, ta);
+
+  Future<void> setLanguage(AppLanguage newLanguage) async {
+    language = newLanguage;
+    (await SharedPreferences.getInstance())
+        .setString(_kLanguage, newLanguage.name);
+    notifyListeners();
+  }
+
   /// Set by main.dart once notifications are ready: schedules the
   /// one-off reminder (+15 min) for a snoozed dose. Kept as a hook so
   /// the store stays free of notification-plugin code.
@@ -220,6 +238,8 @@ class AppStore extends ChangeNotifier {
   static const maxDoseLogEntries = 500;
 
   Future<void> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    language = AppLanguage.fromName(prefs.getString(_kLanguage));
     medicines = await _repo.loadMedicines();
     schedule = await _repo.loadSchedule();
     statuses = await _repo.loadStatuses();

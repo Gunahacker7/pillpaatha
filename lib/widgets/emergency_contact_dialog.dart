@@ -7,6 +7,8 @@ import '../models.dart';
 /// result through the store. Shared by the Caregiver settings card
 /// and the Today screen's "Set emergency contact" button, so both
 /// places edit the same stored contact.
+///
+/// Renders in the app's ONE selected language.
 Future<void> showEmergencyContactDialog(
   BuildContext context,
   AppStore store,
@@ -14,24 +16,25 @@ Future<void> showEmergencyContactDialog(
   final existing = store.emergencyContact;
   final nameCtrl = TextEditingController(text: existing?.name ?? '');
   final phoneCtrl = TextEditingController(text: existing?.phone ?? '');
+  String tr(String en, String ta) => store.tr(en, ta);
   final saved = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Emergency contact · அவசர தொடர்பு'),
+      title: Text(tr('Emergency contact', 'அவசர தொடர்பு')),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           TextField(
             controller: nameCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Name, e.g. Son / Daughter · பெயர்',
+            decoration: InputDecoration(
+              labelText: tr('Name, e.g. Son / Daughter', 'பெயர்'),
             ),
             textCapitalization: TextCapitalization.words,
           ),
           TextField(
             controller: phoneCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Phone number · தொலைபேசி எண்',
+            decoration: InputDecoration(
+              labelText: tr('Phone number', 'தொலைபேசி எண்'),
             ),
             keyboardType: TextInputType.phone,
           ),
@@ -40,11 +43,11 @@ Future<void> showEmergencyContactDialog(
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Cancel'),
+          child: Text(tr('Cancel', 'ரத்து')),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Save'),
+          child: Text(tr('Save', 'சேமி')),
         ),
       ],
     ),

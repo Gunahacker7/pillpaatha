@@ -67,9 +67,10 @@ List<ScheduleItem> applyLookAlikeFlags(List<ScheduleItem> items) {
           explanationEn: item.explanationEn,
           explanationTa: item.explanationTa,
           caution: true,
-          cautionNote:
+          cautionNoteEn:
               'This name looks similar to "${twin.medicineName}". '
-              'Please double-check the strip before taking. · '
+              'Please double-check the strip before taking.',
+          cautionNoteTa:
               'இந்த பெயர் "${twin.medicineName}" போலவே உள்ளது. '
               'சாப்பிடும் முன் ஸ்ட்ரிப்பை சரிபார்க்கவும்.',
         );
@@ -111,9 +112,17 @@ class GeminiScheduleService implements ScheduleService {
                   'True if this medicine name looks or sounds like '
                   'another medicine in the same list.',
             ),
-            'cautionNote': Schema.string(),
+            'cautionNoteEn': Schema.string(
+              description:
+                  'If caution is true: one short English sentence '
+                  'telling the user this name looks similar to the '
+                  'other medicine and to double-check the strip.',
+            ),
+            'cautionNoteTa': Schema.string(
+              description: 'The same caution sentence in simple Tamil.',
+            ),
           },
-          optionalProperties: ['cautionNote'],
+          optionalProperties: ['cautionNoteEn', 'cautionNoteTa'],
         ),
       ),
     },
@@ -180,7 +189,8 @@ class GeminiScheduleService implements ScheduleService {
         explanationEn: j['explanationEn'] as String,
         explanationTa: j['explanationTa'] as String,
         caution: (j['caution'] as bool?) ?? false,
-        cautionNote: (j['cautionNote'] as String?) ?? '',
+        cautionNoteEn: (j['cautionNoteEn'] as String?) ?? '',
+        cautionNoteTa: (j['cautionNoteTa'] as String?) ?? '',
       );
     }).toList();
 
@@ -215,6 +225,8 @@ class SampleScheduleService implements ScheduleService {
         medicineName: m.name,
         dose: 'As written on your prescription — sample timing, '
             'please confirm with your doctor',
+        doseTa: 'உங்கள் மருத்துவ சீட்டில் உள்ளபடி — மாதிரி நேரம், '
+            'மருத்துவரிடம் உறுதிப்படுத்தவும்',
         hour: 8,
         minute: 0,
         foodRelation: FoodRelation.afterFood,

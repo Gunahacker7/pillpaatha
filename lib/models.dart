@@ -4,7 +4,12 @@
 /// [ScheduleItem]'s dose and timing come either from the user's own
 /// prescription text (via Gemini structuring) or from the clearly
 /// labelled sample generator used until Firebase is configured.
+///
+/// Language note: content is STORED in both English and Tamil, and
+/// the UI displays exactly one language at a time (see l10n.dart).
 library;
+
+import 'l10n.dart';
 
 /// One medicine row, as read by OCR and then confirmed/edited by the
 /// user before any schedule is generated.
@@ -42,6 +47,8 @@ enum FoodRelation {
   final String en;
   final String ta;
 
+  String labelFor(AppLanguage lang) => lang.pick(en, ta);
+
   static FoodRelation fromName(String? name) => FoodRelation.values
       .firstWhere((f) => f.name == name, orElse: () => FoodRelation.anyTime);
 }
@@ -52,13 +59,15 @@ class ScheduleItem {
     required this.id,
     required this.medicineName,
     required this.dose,
+    this.doseTa = '',
     required this.hour,
     required this.minute,
     required this.foodRelation,
     required this.explanationEn,
     required this.explanationTa,
     this.caution = false,
-    this.cautionNote = '',
+    this.cautionNoteEn = '',
+    this.cautionNoteTa = '',
   });
 
   final String id;
@@ -68,6 +77,11 @@ class ScheduleItem {
   /// Never generated beyond the prescription text; when unknown the
   /// value is "As directed by your doctor".
   final String dose;
+
+  /// Tamil rendering of [dose] when one exists (the sample generator
+  /// provides one). Empty for real schedules — a prescription's dose
+  /// text is data, shown verbatim in either language.
+  final String doseTa;
 
   final int hour; // 0-23
   final int minute; // 0-59
@@ -81,30 +95,49 @@ class ScheduleItem {
   /// True when this medicine's name looks/sounds like another medicine
   /// on the same list — the user must double-check before taking.
   final bool caution;
-  final String cautionNote;
+  final String cautionNoteEn;
+  final String cautionNoteTa;
+
+  String doseFor(AppLanguage lang) =>
+      (lang.isTamil && doseTa.isNotEmpty) ? doseTa : dose;
+
+  String explanationFor(AppLanguage lang) =>
+      lang.pick(explanationEn, explanationTa);
+
+  String cautionNoteFor(AppLanguage lang) {
+    final picked = lang.pick(cautionNoteEn, cautionNoteTa);
+    if (picked.isNotEmpty) return picked;
+    // One side empty (e.g. a pre-0.3.0 schedule): show the other
+    // rather than nothing — a safety note must never vanish.
+    return lang.isTamil ? cautionNoteEn : cautionNoteTa;
+  }
 
   ScheduleItem copyWith({
     String? medicineName,
     String? dose,
+    String? doseTa,
     int? hour,
     int? minute,
     FoodRelation? foodRelation,
     String? explanationEn,
     String? explanationTa,
     bool? caution,
-    String? cautionNote,
+    String? cautionNoteEn,
+    String? cautionNoteTa,
   }) =>
       ScheduleItem(
         id: id,
         medicineName: medicineName ?? this.medicineName,
         dose: dose ?? this.dose,
+        doseTa: doseTa ?? this.doseTa,
         hour: hour ?? this.hour,
         minute: minute ?? this.minute,
         foodRelation: foodRelation ?? this.foodRelation,
         explanationEn: explanationEn ?? this.explanationEn,
         explanationTa: explanationTa ?? this.explanationTa,
         caution: caution ?? this.caution,
-        cautionNote: cautionNote ?? this.cautionNote,
+        cautionNoteEn: cautionNoteEn ?? this.cautionNoteEn,
+        cautionNoteTa: cautionNoteTa ?? this.cautionNoteTa,
       );
 
   String get timeLabel {
@@ -113,38 +146,48 @@ class ScheduleItem {
     return '$h:${minute.toString().padLeft(2, '0')} $suffix';
   }
 
-  /// Day-part label derived from the clock time.
-  String get dayPart {
-    if (hour < 11) return 'Morning · காலை';
-    if (hour < 16) return 'Afternoon · மதியம்';
-    if (hour < 20) return 'Evening · மாலை';
-    return 'Night · இரவு';
+  /// Day-part label derived from the clock time, in one language.
+  String dayPartFor(AppLanguage lang) {
+    if (hour < 11) return lang.pick('Morning', 'காலை');
+    if (hour < 16) return lang.pick('Afternoon', 'மதியம்');
+    if (hour < 20) return lang.pick('Evening', 'மாலை');
+    return lang.pick('Night', 'இரவு');
   }
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'medicineName': medicineName,
         'dose': dose,
+        'doseTa': doseTa,
         'hour': hour,
         'minute': minute,
         'foodRelation': foodRelation.name,
         'explanationEn': explanationEn,
         'explanationTa': explanationTa,
         'caution': caution,
-        'cautionNote': cautionNote,
+        'cautionNoteEn': cautionNoteEn,
+        'cautionNoteTa': cautionNoteTa,
       };
 
   factory ScheduleItem.fromJson(Map<String, dynamic> json) => ScheduleItem(
         id: json['id'] as String,
         medicineName: json['medicineName'] as String,
         dose: json['dose'] as String,
+        doseTa: (json['doseTa'] as String?) ?? '',
         hour: json['hour'] as int,
         minute: json['minute'] as int,
         foodRelation: FoodRelation.fromName(json['foodRelation'] as String?),
         explanationEn: json['explanationEn'] as String,
         explanationTa: json['explanationTa'] as String,
         caution: (json['caution'] as bool?) ?? false,
-        cautionNote: (json['cautionNote'] as String?) ?? '',
+        // Pre-0.3.0 schedules stored one bilingual 'cautionNote';
+        // it lands in the English slot and Tamil falls back to it
+        // via the empty-check in cautionNoteFor callers' data —
+        // acceptable for a schedule that predates the split.
+        cautionNoteEn: (json['cautionNoteEn'] as String?) ??
+            (json['cautionNote'] as String?) ??
+            '',
+        cautionNoteTa: (json['cautionNoteTa'] as String?) ?? '',
       );
 }
 
@@ -202,18 +245,17 @@ extension DoseStatusName on DoseStatus {
 /// clock — a dose whose time has passed with nothing recorded is
 /// **missed**; one still to come is **pending**.
 enum EffectiveDoseStatus {
-  pending('Pending', 'காத்திருப்பு', 'Pending · காத்திருப்பு'),
-  taken('Taken', 'சாப்பிட்டது', 'Taken · சாப்பிட்டாச்சு'),
-  skipped('Skipped', 'தவிர்த்தது', 'Skipped · தவிர்த்தது'),
-  snoozed('Snoozed', 'ஒத்திவைத்தது', 'Snoozed · ஒத்திவைத்தது'),
-  missed('Missed', 'தவறியது', 'Missed · தவறிவிட்டது');
+  pending('Pending', 'காத்திருப்பு'),
+  taken('Taken', 'சாப்பிட்டது'),
+  skipped('Skipped', 'தவிர்த்தது'),
+  snoozed('Snoozed', 'ஒத்திவைத்தது'),
+  missed('Missed', 'தவறிவிட்டது');
 
-  const EffectiveDoseStatus(this.en, this.ta, this.label);
+  const EffectiveDoseStatus(this.en, this.ta);
   final String en;
   final String ta;
 
-  /// Combined bilingual label, e.g. "Taken · சாப்பிட்டாச்சு".
-  final String label;
+  String labelFor(AppLanguage lang) => lang.pick(en, ta);
 
   static EffectiveDoseStatus fromName(String? name) =>
       EffectiveDoseStatus.values.firstWhere(
@@ -240,10 +282,15 @@ EffectiveDoseStatus effectiveStatus(
 
 /// Safety copy shown wherever a missed dose appears. PillPaatha
 /// NEVER advises making up a missed dose with an extra/double dose.
-const String kMissedDoseAdvice =
+const String kMissedDoseAdviceEn =
     'Missed — do NOT take an extra or double dose. Ask your doctor or '
-    'pharmacist. · தவறவிட்ட மருந்துக்கு இரட்டை டோஸ் எடுக்காதீர்கள்; '
-    'மருத்துவரிடம் கேளுங்கள்.';
+    'pharmacist.';
+const String kMissedDoseAdviceTa =
+    'தவறவிட்ட மருந்துக்கு இரட்டை டோஸ் எடுக்காதீர்கள்; மருத்துவரிடம் '
+    'அல்லது மருந்தாளரிடம் கேளுங்கள்.';
+
+String missedDoseAdviceFor(AppLanguage lang) =>
+    lang.pick(kMissedDoseAdviceEn, kMissedDoseAdviceTa);
 
 /// One entry in the dose log: a status action the user took, kept so
 /// the caregiver view can show recent activity and adherence.
