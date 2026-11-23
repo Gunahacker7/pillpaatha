@@ -1,25 +1,32 @@
 import 'package:flutter/material.dart';
 
 import '../data/app_store.dart';
+import '../l10n.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/emergency_contact_dialog.dart';
 import '../widgets/safety_line.dart';
+import '../widgets/v2.dart';
 
-/// MVP item 4: caregiver view — today's doses with taken / missed /
-/// upcoming status, so a family member can see at a glance whether
-/// medicines were taken on time. Also shows adherence over the dose
-/// log, the most recent dose-log entries, and the emergency-contact
-/// settings card.
+/// MVP item 4, V2 "Reports" (the caregiver view renamed per the
+/// boards): adherence ring, today's doses with taken / missed /
+/// upcoming status so a family member can see at a glance whether
+/// medicines were taken on time, the stat tiles, the recent dose
+/// log, and the emergency-contact settings card.
 ///
 /// Day 1 reads local state (the same store the patient uses). The
-/// data layer ([ScheduleRepository]) is the seam where Firestore sync
-/// will slot in, so this screen will later show a remote parent's
-/// live status without changes here.
-class CaregiverScreen extends StatelessWidget {
-  const CaregiverScreen({super.key, required this.store});
+/// data layer ([ScheduleRepository]) is the seam where Firestore
+/// sync will slot in, so this screen will later show a remote
+/// parent's live status without changes here.
+///
+/// Everything renders in the app's ONE selected language.
+class ReportsScreen extends StatelessWidget {
+  const ReportsScreen({super.key, required this.store});
 
   final AppStore store;
+
+  AppLanguage get lang => store.language;
+  String tr(String en, String ta) => lang.pick(en, ta);
 
   @override
   Widget build(BuildContext context) {
@@ -28,27 +35,34 @@ class CaregiverScreen extends StatelessWidget {
       builder: (context, _) {
         final schedule = store.schedule;
         final children = <Widget>[
-          const Text(
-            'Caregiver view · பராமரிப்பாளர் பார்வை',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+          Text(
+            tr('Reports', 'அறிக்கைகள்'),
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 4),
-          const Text(
-            "Today's doses and whether they were taken on time.",
-            style: TextStyle(color: PillTheme.inkSoft),
+          Text(
+            tr(
+              "Today's doses, adherence and whether medicines were "
+              'taken on time — the caregiver view.',
+              'இன்றைய டோஸ்கள், ஒழுங்கு, மருந்துகள் நேரத்தில் '
+              'எடுக்கப்பட்டதா — பராமரிப்பாளர் பார்வை.',
+            ),
+            style: const TextStyle(color: PillTheme.inkSoft),
           ),
           const SizedBox(height: 16),
         ];
 
         if (schedule == null) {
           children.add(
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
               child: Text(
-                'No schedule yet — nothing to follow up on.\n\n'
-                'அட்டவணை இல்லை.',
+                tr(
+                  'No schedule yet — nothing to follow up on.',
+                  'இன்னும் அட்டவணை இல்லை — பின்தொடர எதுவும் இல்லை.',
+                ),
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 17),
+                style: const TextStyle(fontSize: 17),
               ),
             ),
           );
@@ -60,10 +74,16 @@ class CaregiverScreen extends StatelessWidget {
           const SizedBox(height: 16),
           _EmergencyContactCard(store: store),
           const SizedBox(height: 8),
-          const Text(
-            'Family sync (see a parent\'s status from your own phone) '
-            'arrives with the Firestore step — see FIREBASE-SETUP.md.',
-            style: TextStyle(color: PillTheme.inkSoft, fontSize: 14),
+          Text(
+            tr(
+              'Family sync (see a parent\'s status from your own '
+              'phone) arrives with the Firestore step — see '
+              'FIREBASE-SETUP.md.',
+              'குடும்ப ஒத்திசைவு (உங்கள் தொலைபேசியிலிருந்து '
+              'பெற்றோரின் நிலையைப் பார்ப்பது) Firestore படியில் '
+              'வரும் — FIREBASE-SETUP.md பார்க்கவும்.',
+            ),
+            style: const TextStyle(color: PillTheme.inkSoft, fontSize: 14),
           ),
         ]);
 
@@ -93,161 +113,177 @@ class CaregiverScreen extends StatelessWidget {
     final recentLog = store.doseLog.reversed.take(15).toList();
 
     return [
-      if (schedule.isSample) const SampleBanner(),
-      Row(
-        children: [
-          _SummaryTile(
-            label: EffectiveDoseStatus.taken.en,
-            ta: EffectiveDoseStatus.taken.ta,
-            value: '${counts[EffectiveDoseStatus.taken]}',
-            color: PillTheme.primary,
-            icon: Icons.check_circle,
-          ),
-          _SummaryTile(
-            label: EffectiveDoseStatus.skipped.en,
-            ta: EffectiveDoseStatus.skipped.ta,
-            value: '${counts[EffectiveDoseStatus.skipped]}',
-            color: PillTheme.inkSoft,
-            icon: Icons.remove_circle,
-          ),
-          _SummaryTile(
-            label: EffectiveDoseStatus.snoozed.en,
-            ta: EffectiveDoseStatus.snoozed.ta,
-            value: '${counts[EffectiveDoseStatus.snoozed]}',
-            color: PillTheme.accent,
-            icon: Icons.snooze,
-          ),
-          _SummaryTile(
-            label: EffectiveDoseStatus.missed.en,
-            ta: EffectiveDoseStatus.missed.ta,
-            value: '${counts[EffectiveDoseStatus.missed]}',
-            color: PillTheme.danger,
-            icon: Icons.alarm_off,
-          ),
-          _SummaryTile(
-            label: EffectiveDoseStatus.pending.en,
-            ta: EffectiveDoseStatus.pending.ta,
-            value: '${counts[EffectiveDoseStatus.pending]}',
-            color: PillTheme.accent,
-            icon: Icons.schedule,
-          ),
-        ],
-      ),
-      const SizedBox(height: 12),
-      ...items.map((item) {
-        final effective = store.effectiveStatusFor(item, now);
-        final (color, icon) = switch (effective) {
-          EffectiveDoseStatus.taken => (PillTheme.primary, Icons.check_circle),
-          EffectiveDoseStatus.skipped => (
-              PillTheme.inkSoft,
-              Icons.remove_circle
-            ),
-          EffectiveDoseStatus.snoozed => (PillTheme.accent, Icons.snooze),
-          EffectiveDoseStatus.missed => (PillTheme.danger, Icons.alarm_off),
-          EffectiveDoseStatus.pending => (PillTheme.accent, Icons.schedule),
-        };
-        return Card(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ListTile(
-                leading: Icon(icon, color: color, size: 28),
-                title: Text(
-                  item.medicineName,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                subtitle: Text('${item.timeLabel} · ${item.dose}'),
-                trailing: Text(
-                  effective.label,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-              if (effective == EffectiveDoseStatus.missed)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: Text(
-                    kMissedDoseAdvice,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: PillTheme.danger,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        );
-      }),
-      const SizedBox(height: 16),
+      if (schedule.isSample) SampleBanner(language: lang),
+      // Adherence ring card (boards).
       Card(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.all(18),
           child: Row(
             children: [
-              const Icon(Icons.insights,
-                  color: PillTheme.primaryDark, size: 28),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Adherence · ஒழுங்கு',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                ),
+              AdherenceRing(
+                percent: adherence,
+                caption: tr('Adherence', 'ஒழுங்கு'),
+                size: 118,
               ),
-              Text(
-                adherence == null ? '—' : '${adherence.round()}%',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: PillTheme.primaryDark,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tr('Dose adherence', 'மருந்து ஒழுங்கு'),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      adherence == null
+                          ? tr(
+                              'No doses recorded yet.',
+                              'இன்னும் டோஸ் பதிவு இல்லை.',
+                            )
+                          : tr(
+                              '${counts[EffectiveDoseStatus.taken]} taken '
+                              'today · ${counts[EffectiveDoseStatus.missed]} '
+                              'missed today.',
+                              'இன்று ${counts[EffectiveDoseStatus.taken]} '
+                              'எடுத்தது · ${counts[EffectiveDoseStatus.missed]} '
+                              'தவறியது.',
+                            ),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: PillTheme.inkSoft,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
       ),
+      const SizedBox(height: 12),
+      // Summary tiles: 3 per row, wrapping (never squeezed).
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final tileWidth = (constraints.maxWidth - 16) / 3;
+          return Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final status in EffectiveDoseStatus.values)
+                SizedBox(
+                  width: tileWidth,
+                  child: _SummaryTile(
+                    label: status.labelFor(lang),
+                    value: '${counts[status]}',
+                    color: statusStyle(status).color,
+                    icon: statusStyle(status).icon,
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+      const SizedBox(height: 12),
+      ...items.map((item) {
+        final effective = store.effectiveStatusFor(item, now);
+        final style = statusStyle(effective);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Card(
+            child: Container(
+              decoration: BoxDecoration(
+                color: style.tint.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(PillTheme.cardRadius),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ListTile(
+                    leading: StatusCircle(status: effective),
+                    title: Text(
+                      item.medicineName,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: Text(
+                      '${item.timeLabel} · ${item.doseFor(lang)}',
+                    ),
+                    // Status word on its own line under the title
+                    // area is in the subtitle flow; the trailing
+                    // slot carries only the status circle.
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                    child: Text(
+                      effective.labelFor(lang),
+                      style: TextStyle(
+                        color: style.color,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                  if (item.caution)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: CautionStrip(
+                        note: item.cautionNoteFor(lang),
+                      ),
+                    ),
+                  if (effective == EffectiveDoseStatus.missed)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: Text(
+                        missedDoseAdviceFor(lang),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: PillTheme.danger,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }),
       const SizedBox(height: 16),
-      const Text(
-        'Recent dose log · அண்மைய பதிவு',
-        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+      Text(
+        tr('Recent dose log', 'அண்மைய டோஸ் பதிவு'),
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
       ),
       const SizedBox(height: 8),
       if (recentLog.isEmpty)
-        const Card(
+        Card(
           child: Padding(
-            padding: EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
             child: Text(
-              'No doses recorded yet. · இன்னும் பதிவு இல்லை.',
+              tr('No doses recorded yet.', 'இன்னும் பதிவு இல்லை.'),
             ),
           ),
         )
       else
         ...recentLog.map(
-          (e) => Card(
-            child: ListTile(
-              leading: Icon(
-                switch (e.status) {
-                  EffectiveDoseStatus.taken => Icons.check_circle,
-                  EffectiveDoseStatus.skipped => Icons.remove_circle,
-                  EffectiveDoseStatus.snoozed => Icons.snooze,
-                  EffectiveDoseStatus.missed => Icons.alarm_off,
-                  EffectiveDoseStatus.pending => Icons.schedule,
-                },
-                color: PillTheme.primaryDark,
-              ),
-              title: Text(
-                e.medicineName,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              subtitle: Text(_formatLogTime(e.scheduledAt)),
-              trailing: Text(
-                e.status.label,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
+          (e) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Card(
+              child: ListTile(
+                leading: StatusCircle(status: e.status, size: 26),
+                title: Text(
+                  e.medicineName,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(_formatLogTime(e.scheduledAt)),
+                trailing: Text(
+                  e.status.labelFor(lang),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
                 ),
               ),
             ),
@@ -268,7 +304,7 @@ class CaregiverScreen extends StatelessWidget {
   }
 }
 
-/// Settings card for the emergency contact shown on the Today
+/// Settings card for the emergency contact shown on the Schedule
 /// screen's emergency button.
 class _EmergencyContactCard extends StatelessWidget {
   const _EmergencyContactCard({required this.store});
@@ -278,27 +314,36 @@ class _EmergencyContactCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final contact = store.emergencyContact;
+    final lang = store.language;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Row(
+            Row(
               children: [
-                Icon(Icons.emergency, color: PillTheme.danger),
-                SizedBox(width: 8),
+                const Icon(Icons.emergency, color: PillTheme.danger),
+                const SizedBox(width: 8),
                 Text(
-                  'Emergency contact · அவசர தொடர்பு',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                  lang.pick('Emergency contact', 'அவசர தொடர்பு'),
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
               contact == null
-                  ? 'Not set yet. Add a family member the patient can '
-                      'call in one tap from the Today screen.'
+                  ? lang.pick(
+                      'Not set yet. Add a family member the patient '
+                      'can call in one tap from the Schedule screen.',
+                      'இன்னும் சேர்க்கவில்லை. அட்டவணை '
+                      'பக்கத்திலிருந்து ஒரே தொடுதலில் அழைக்கக்கூடிய '
+                      'குடும்ப உறுப்பினரை சேர்க்கவும்.',
+                    )
                   : '${contact.name} — ${contact.phone}',
               style: const TextStyle(fontSize: 16),
             ),
@@ -306,7 +351,11 @@ class _EmergencyContactCard extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: () => showEmergencyContactDialog(context, store),
               icon: const Icon(Icons.edit),
-              label: Text(contact == null ? 'Add · சேர்' : 'Edit · திருத்து'),
+              label: Text(
+                contact == null
+                    ? lang.pick('Add', 'சேர்')
+                    : lang.pick('Edit', 'திருத்து'),
+              ),
             ),
           ],
         ),
@@ -318,43 +367,45 @@ class _EmergencyContactCard extends StatelessWidget {
 class _SummaryTile extends StatelessWidget {
   const _SummaryTile({
     required this.label,
-    required this.ta,
     required this.value,
     required this.color,
     required this.icon,
   });
 
   final String label;
-  final String ta;
   final String value;
   final Color color;
   final IconData icon;
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
-          child: Column(
-            children: [
-              Icon(icon, color: color, size: 26),
-              const SizedBox(height: 4),
-              Text(
-                value,
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 26),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                softWrap: false,
                 style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w700)),
-              Text(ta,
-                  style: const TextStyle(
-                      fontSize: 12, color: PillTheme.inkSoft)),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

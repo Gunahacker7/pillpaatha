@@ -1,36 +1,75 @@
 import 'package:flutter/material.dart';
 
-/// PillPaatha design system — PillPaatha's OWN identity.
+/// PillPaatha V2 design system — Guna's reference boards (23 Nov
+/// 2026, DESIGN-V2-SPEC.md). The Unique Theme/Colour Rule was
+/// revoked for this app only, so PillPaatha V2 uses the boards'
+/// teal/green health palette exactly:
 ///
-/// Guna's standing rule (23 Nov 2026): every project carries a unique
-/// theme and colour pattern; design language is never reused across
-/// projects. PillPaatha therefore deliberately does NOT use Kanakku's
-/// palette (cream #F3F3F0 / deep green #1E6B4F / Fraunces+Manrope).
-/// Only engineering patterns were reused, never visual identity.
+///  * header / hero: deep teal gradient #0A5563 → #0F7A68
+///  * primary action: green gradient #1DB56A → #12994E
+///  * background: very light aqua-grey #EFF7F7
+///  * cards: white, radius 20–24, soft teal-grey shadow
+///  * text: deep navy-teal #123B4A, secondary #5E7A82
+///  * taken #1FA055 / tint #E2F4E8 · missed #E5484D / tint #FDECEC
+///    pending & snoozed amber #E8A33D / tint #FBF0DC
 ///
-/// PillPaatha's palette is a warm "care" palette, chosen for its
-/// users — elderly patients and their family caregivers:
-///  * background: soft peach  #FFF6EF
-///  * primary:    deep violet #5B4B8A
-///  * accent:     warm amber  #E8A33D
-/// Type is large and friendly, tap targets are big, and contrast is
-/// kept high for ageing eyes and bright daylight.
+/// Type: Poppins (Latin) + Noto Sans Tamil, bundled so typography
+/// is identical on every phone. Elderly-first sizes stay: body
+/// 16–18px, primary buttons ≥54px tall.
 class PillTheme {
-  static const primary = Color(0xFF5B4B8A); // deep violet
-  static const primaryDark = Color(0xFF443763);
+  // Brand teal (headers, nav, brand marks).
+  static const primary = Color(0xFF0F7A68);
+  static const primaryDark = Color(0xFF0A5563);
+  static const headerGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF0A5563), Color(0xFF0F7A68)],
+  );
+
+  // Primary action green (buttons).
+  static const action = Color(0xFF17A657);
+  static const actionGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF1DB56A), Color(0xFF12994E)],
+  );
+
   static const accent = Color(0xFFE8A33D); // warm amber
-  static const bg = Color(0xFFFFF6EF); // soft peach
+  static const bg = Color(0xFFEFF7F7); // very light aqua-grey
   static const card = Colors.white;
-  static const ink = Color(0xFF2B2440); // deep plum-ink, high contrast
-  static const inkSoft = Color(0xFF6E6489);
-  static const danger = Color(0xFFB3261E);
-  static const cautionBg = Color(0xFFFFF0D2);
-  static const sampleBg = Color(0xFFFBE3B8);
+  static const ink = Color(0xFF123B4A); // deep navy-teal
+  static const inkSoft = Color(0xFF5E7A82);
+  static const cardBorder = Color(0xFFDDEAE8);
 
-  static const cardRadius = 20.0;
+  // Dose status colours + tints (boards).
+  static const taken = Color(0xFF1FA055);
+  static const takenTint = Color(0xFFE2F4E8);
+  static const missed = Color(0xFFE5484D);
+  static const missedTint = Color(0xFFFDECEC);
+  static const pendingTint = Color(0xFFFBF0DC);
+  static const neutralTint = Color(0xFFEAF1F2);
+  static const danger = Color(0xFFE5484D);
+  static const cautionBg = Color(0xFFFBF0DC);
+  static const sampleBg = Color(0xFFFBF0DC);
 
-  /// Tamil strings fall back to the platform's Noto Sans Tamil.
-  static const tamilFallback = <String>['Noto Sans Tamil'];
+  // Reminder hero (boards): deep teal + gold bell.
+  static const bellGold = Color(0xFFF5B921);
+
+  static const cardRadius = 22.0;
+
+  static const cardShadow = [
+    BoxShadow(
+      color: Color(0x140A5563),
+      blurRadius: 14,
+      offset: Offset(0, 4),
+    ),
+  ];
+
+  /// Bundled type (V2): Poppins for Latin, Noto Sans Tamil for
+  /// Tamil — fetched by CI at build time (see the workflow file).
+  static const fontLatin = 'PillSans';
+  static const fontTamil = 'PillTamil';
+  static const tamilFallback = <String>[fontTamil, 'Noto Sans Tamil'];
 
   static ThemeData light() {
     final base = ThemeData(
@@ -40,6 +79,7 @@ class PillTheme {
         surface: bg,
       ),
       scaffoldBackgroundColor: bg,
+      fontFamily: fontLatin,
       fontFamilyFallback: tamilFallback,
     );
     return base.copyWith(
@@ -57,9 +97,10 @@ class PillTheme {
       cardTheme: CardThemeData(
         color: card,
         elevation: 0,
+        shadowColor: const Color(0x140A5563),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(cardRadius),
-          side: const BorderSide(color: Color(0xFFF0DFCE)),
+          side: const BorderSide(color: cardBorder),
         ),
       ),
       textTheme: base.textTheme.copyWith(
@@ -79,12 +120,12 @@ class PillTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: primary,
+          backgroundColor: action,
           foregroundColor: Colors.white,
           minimumSize: const Size(48, 54),
-          textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
           ),
         ),
       ),
@@ -92,18 +133,46 @@ class PillTheme {
         style: OutlinedButton.styleFrom(
           foregroundColor: primaryDark,
           minimumSize: const Size(48, 54),
-          textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
           ),
+          side: const BorderSide(color: Color(0xFFBFD9D4)),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: cardBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: cardBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: primary, width: 1.6),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: Colors.white,
-        indicatorColor: accent.withValues(alpha: 0.35),
-        labelTextStyle: WidgetStateProperty.all(
-          const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-        ),
+        indicatorColor: takenTint,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: selected ? primaryDark : inkSoft,
+          );
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            color: selected ? primaryDark : inkSoft,
+          );
+        }),
       ),
     );
   }

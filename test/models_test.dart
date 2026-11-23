@@ -1,10 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pillpaatha/data/app_store.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pillpaatha/l10n.dart';
 import 'package:pillpaatha/models.dart';
 import 'package:pillpaatha/services/ocr_service.dart';
 import 'package:pillpaatha/services/schedule_service.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
+
   group('OCR line parser', () {
     test('extracts medicine name + strength from strip text', () {
       final meds = OcrService.parseMedicineLines(
@@ -206,13 +211,16 @@ void main() {
             explanationEn: 'en',
             explanationTa: 'ta',
             caution: true,
-            cautionNote: 'note',
+            cautionNoteEn: 'note-en',
+            cautionNoteTa: 'note-ta',
           ),
         ],
         isSample: false,
         generatedAt: DateTime(2026, 11, 23),
       );
       final back = GeneratedSchedule.fromJson(s.toJson());
+      expect(back.items.single.cautionNoteEn, 'note-en');
+      expect(back.items.single.cautionNoteTa, 'note-ta');
       expect(back.items.single.medicineName, 'Amlodipine');
       expect(back.items.single.foodRelation, FoodRelation.beforeFood);
       expect(back.items.single.timeLabel, '9:30 PM');
@@ -312,6 +320,70 @@ void main() {
       expect(back.medicineName, 'Metformin');
       expect(back.status, EffectiveDoseStatus.taken);
       expect(back.scheduledAt, DateTime(2026, 11, 23, 8, 0));
+    });
+  });
+
+  group('single-language display (v0.3.0)', () {
+    ScheduleItem item({
+      String doseTa = '',
+      String cautionNoteEn = '',
+      String cautionNoteTa = '',
+    }) =>
+        ScheduleItem(
+          id: 'd1',
+          medicineName: 'Metformin',
+          dose: '1 tablet',
+          doseTa: doseTa,
+          hour: 8,
+          minute: 0,
+          foodRelation: FoodRelation.afterFood,
+          explanationEn: 'english words',
+          explanationTa: 'தமிழ் சொற்கள்',
+          cautionNoteEn: cautionNoteEn,
+          cautionNoteTa: cautionNoteTa,
+        );
+
+    test('language defaults: unknown name falls back to Tamil', () {
+      expect(AppLanguage.fromName(null), AppLanguage.ta);
+      expect(AppLanguage.fromName('xx'), AppLanguage.ta);
+      expect(AppLanguage.fromName('en'), AppLanguage.en);
+    });
+
+    test('pick returns exactly one language', () {
+      expect(AppLanguage.en.pick('Hello', 'வணக்கம்'), 'Hello');
+      expect(AppLanguage.ta.pick('Hello', 'வணக்கம்'), 'வணக்கம்');
+    });
+
+    test('explanation, day-part and status follow the language', () {
+      final i = item();
+      expect(i.explanationFor(AppLanguage.en), 'english words');
+      expect(i.explanationFor(AppLanguage.ta), 'தமிழ் சொற்கள்');
+      expect(i.dayPartFor(AppLanguage.en), 'Morning');
+      expect(i.dayPartFor(AppLanguage.ta), 'காலை');
+      expect(EffectiveDoseStatus.missed.labelFor(AppLanguage.ta), 'தவறிவிட்டது');
+    });
+
+    test('dose: Tamil slot used only when present', () {
+      expect(item().doseFor(AppLanguage.ta), '1 tablet');
+      expect(item(doseTa: '1 மாத்திரை').doseFor(AppLanguage.ta), '1 மாத்திரை');
+      expect(item(doseTa: '1 மாத்திரை').doseFor(AppLanguage.en), '1 tablet');
+    });
+
+    test('caution note never vanishes: empty side falls back', () {
+      final legacy = item(cautionNoteEn: 'old bilingual note');
+      expect(legacy.cautionNoteFor(AppLanguage.ta), 'old bilingual note');
+      final both = item(cautionNoteEn: 'en note', cautionNoteTa: 'ta note');
+      expect(both.cautionNoteFor(AppLanguage.ta), 'ta note');
+      expect(both.cautionNoteFor(AppLanguage.en), 'en note');
+    });
+
+    test('legacy JSON with single cautionNote still loads', () {
+      final json = item().toJson()
+        ..remove('cautionNoteEn')
+        ..remove('cautionNoteTa')
+        ..['cautionNote'] = 'legacy note';
+      final back = ScheduleItem.fromJson(json);
+      expect(back.cautionNoteEn, 'legacy note');
     });
   });
 }
