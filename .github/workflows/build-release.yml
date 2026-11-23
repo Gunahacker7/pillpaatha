@@ -1,0 +1,47 @@
+name: Build release APKs
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.8'
+          channel: stable
+
+      # google-services.json is never committed to this public repo.
+      # It is stored base64-encoded in the GOOGLE_SERVICES_JSON Actions
+      # secret and restored here so the google-services Gradle plugin
+      # can inject the Firebase config into the build.
+      - name: Restore google-services.json from secret
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "::error::GOOGLE_SERVICES_JSON secret is not set. See README 'CI build' for how to add it."
+            exit 1
+          fi
+          echo "$GOOGLE_SERVICES_JSON" | base64 --decode > android/app/google-services.json
+
+      - name: Build release APKs (split per ABI)
+        run: flutter build apk --release --split-per-abi
+
+      - name: Upload APKs as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pillpaatha-release-apks
+          path: build/app/outputs/flutter-apk/*-release.apk
+          if-no-files-found: error
