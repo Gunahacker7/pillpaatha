@@ -5,7 +5,6 @@ import '../data/app_store.dart';
 import '../services/ocr_service.dart';
 import '../services/schedule_service.dart';
 import '../theme.dart';
-import '../widgets/app_check_token_tile.dart';
 import '../widgets/medicine_edit_dialog.dart';
 import '../widgets/v2.dart';
 
@@ -364,13 +363,6 @@ class _ScanScreenState extends State<ScanScreen> {
                         ),
                       ),
                     ),
-                  if (widget.firebaseReady) ...[
-                    const SizedBox(height: 24),
-                    // Discreet setup aid for the sideloaded demo
-                    // build: shows the App Check debug token so it
-                    // can be registered in the Firebase console.
-                    AppCheckTokenTile(store: store),
-                  ],
                 ],
               ),
             ),

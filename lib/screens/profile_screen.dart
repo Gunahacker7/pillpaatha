@@ -4,7 +4,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../data/app_store.dart';
 import '../l10n.dart';
 import '../theme.dart';
-import '../widgets/app_check_token_tile.dart';
 import '../widgets/emergency_contact_dialog.dart';
 import '../widgets/v2.dart';
 
@@ -241,12 +240,6 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
             ),
-            if (firebaseReady) ...[
-              const SizedBox(height: 12),
-              Card(
-                child: AppCheckTokenTile(store: store),
-              ),
-            ],
           ],
         );
       },
