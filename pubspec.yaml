@@ -1,0 +1,43 @@
+name: pillpaatha
+description: "PillPaatha — photo a medicine strip or prescription, get a simple Tamil + English dosage schedule with reminders. Built for #BuildHybridAI 2026."
+publish_to: 'none'
+
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Photo capture (camera / gallery).
+  image_picker: ^1.1.2
+
+  # On-device OCR (hybrid AI, device side). Reads medicine strip /
+  # prescription text offline and privately on the phone.
+  google_mlkit_text_recognition: ^0.15.0
+
+  # Cloud AI (hybrid AI, cloud side): Gemini via Firebase AI Logic.
+  # Used only when Firebase is configured (see FIREBASE-SETUP.md);
+  # without it the app runs on a clearly-labelled sample schedule.
+  firebase_core: ^4.2.0
+  firebase_ai: ^3.4.0
+
+  # Dose reminders.
+  flutter_local_notifications: ^19.4.0
+  timezone: ^0.10.1
+
+  # Local persistence for medicines, schedule and dose status.
+  # (Data layer is abstracted so Firestore sync can slot in later.)
+  shared_preferences: ^2.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
