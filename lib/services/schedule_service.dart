@@ -80,7 +80,10 @@ List<ScheduleItem> applyLookAlikeFlags(List<ScheduleItem> items) {
 
 /// Gemini via Firebase AI Logic (Firebase's `firebase_ai` package).
 class GeminiScheduleService implements ScheduleService {
-  static const _modelName = 'gemini-2.5-flash';
+  // 2026-11-23: gemini-2.5-flash was retired for new users (the API
+  // error names its replacement explicitly) — use the model the API
+  // recommends for this project.
+  static const _modelName = 'gemini-3.8-flash';
 
   static final _schema = Schema.object(
     properties: {

@@ -76,6 +76,43 @@ Future<void> showDoseEditDialog(
         ),
         actions: [
           TextButton(
+            onPressed: () async {
+              final confirmed = await showDialog<bool>(
+                context: ctx,
+                builder: (c2) => AlertDialog(
+                  title: Text(tr('Delete this dose?', 'இந்த டோஸை நீக்கவா?')),
+                  content: Text(tr(
+                    'This removes only this one dose from the '
+                    'schedule. The medicine stays in your list.',
+                    'அட்டவணையில் இருந்து இந்த ஒரு டோஸ் மட்டும் '
+                    'நீங்கும். மருந்து பட்டியலில் இருக்கும்.',
+                  )),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(c2, false),
+                      child: Text(tr('Cancel', 'ரத்து')),
+                    ),
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: PillTheme.danger,
+                      ),
+                      onPressed: () => Navigator.pop(c2, true),
+                      child: Text(tr('Delete', 'நீக்கு')),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed == true) {
+                await store.removeScheduleItem(item.id);
+                if (ctx.mounted) Navigator.pop(ctx, false);
+              }
+            },
+            child: Text(
+              tr('Delete dose', 'டோஸை நீக்கு'),
+              style: const TextStyle(color: PillTheme.danger),
+            ),
+          ),
+          TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(tr('Cancel', 'ரத்து')),
           ),

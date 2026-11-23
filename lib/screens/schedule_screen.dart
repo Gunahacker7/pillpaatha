@@ -114,6 +114,41 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
+  // --- Delete schedule --------------------------------------------------
+
+  Future<void> _confirmDeleteSchedule(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('Delete this schedule?', 'இந்த அட்டவணையை நீக்கவா?')),
+        content: Text(tr(
+          'The whole schedule is removed from this phone, with '
+          'today\'s dose marks. Your medicines list stays — you '
+          'can scan again any time.',
+          'இன்றைய டோஸ் குறிப்புகளுடன் முழு அட்டவணையும் இந்த '
+          'ஃபோனில் இருந்து நீங்கும். மருந்து பட்டியல் இருக்கும் — '
+          'எப்போது வேண்டுமானாலும் மீண்டும் ஸ்கேன் செய்யலாம்.',
+        )),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(tr('Cancel', 'ரத்து')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: PillTheme.danger,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(tr('Delete', 'நீக்கு')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await store.clearSchedule();
+    }
+  }
+
   // --- Voice read-out ---------------------------------------------------
 
   Future<void> _toggleListen(List<ScheduleItem> items) async {
@@ -253,7 +288,18 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => _confirmDeleteSchedule(context),
+                icon: const Icon(Icons.delete_outline,
+                    size: 18, color: PillTheme.danger),
+                label: Text(
+                  tr('Delete schedule', 'அட்டவணையை நீக்கு'),
+                  style: const TextStyle(color: PillTheme.danger),
+                ),
+              ),
+            ),
             for (final entry in groups.entries) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),

@@ -297,6 +297,25 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Removes ONE dose from the schedule (the medicines list is not
+  /// touched). Removing the last dose clears the schedule entirely.
+  Future<void> removeScheduleItem(String id) async {
+    final current = schedule;
+    if (current == null) return;
+    final items = current.items.where((i) => i.id != id).toList();
+    if (items.isEmpty) {
+      await clearSchedule();
+      return;
+    }
+    schedule = GeneratedSchedule(
+      items: items,
+      isSample: current.isSample,
+      generatedAt: current.generatedAt,
+    );
+    await _repo.saveSchedule(schedule);
+    notifyListeners();
+  }
+
   /// Replaces one schedule item (e.g. after the user edits its time
   /// or dose text). Notifying listeners re-schedules the reminders.
   Future<void> updateScheduleItem(ScheduleItem updated) async {
