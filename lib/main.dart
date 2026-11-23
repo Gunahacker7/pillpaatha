@@ -32,14 +32,22 @@ Future<void> main() async {
   // App Check: AI Logic enforces App Check, so Gemini calls are
   // rejected without a valid token. This is a sideloaded hackathon
   // build (not on the Play Store), so Play Integrity cannot attest
-  // it — use the DEBUG provider here and register the token shown in
-  // the app (Scan screen / Profile) in the Firebase console.
-  // FOR A PLAY STORE RELEASE: swap AndroidProvider.debug below for
+  // it — use the DEBUG provider. CI injects a pre-registered debug
+  // token via --dart-define=APP_CHECK_DEBUG_TOKEN (stored as a
+  // GitHub Actions secret, never in this repo); that token is
+  // registered once in the Firebase console (App Check → Apps →
+  // Manage debug tokens), so this build attests with no on-device
+  // setup step. Without the define (local dev), the provider
+  // generates a device token that must be registered manually.
+  // FOR A PLAY STORE RELEASE: swap the debug provider below for
   // AndroidProvider.playIntegrity.
   if (firebaseReady) {
     try {
+      const injectedToken = String.fromEnvironment('APP_CHECK_DEBUG_TOKEN');
       await FirebaseAppCheck.instance.activate(
-        providerAndroid: const AndroidDebugProvider(),
+        providerAndroid: injectedToken.isEmpty
+            ? const AndroidDebugProvider()
+            : const AndroidDebugProvider(debugToken: injectedToken),
         providerApple: const AppleDebugProvider(),
       );
     } catch (_) {
