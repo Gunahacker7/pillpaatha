@@ -70,3 +70,11 @@ jobs:
 
       - name: Upload APKs as an artifact
         uses: actions/upload-artifact@v4
+        with:
+          name: pillpaatha-release-apks
+          path: build/app/outputs/flutter-apk/*-release.apk
+          if-no-files-found: error
+
+
+
+
