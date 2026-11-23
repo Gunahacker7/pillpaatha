@@ -54,12 +54,18 @@ Future<void> main() async {
           .where((i) => i.id == itemId)
           .firstOrNull;
       if (item == null) return;
-      store.markStatus(
-        item,
-        action == 'taken' ? DoseStatus.taken : DoseStatus.skipped,
-      );
+      if (action == 'snoozed') {
+        store.markSnoozed(item);
+      } else {
+        store.markStatus(
+          item,
+          action == 'taken' ? DoseStatus.taken : DoseStatus.skipped,
+        );
+      }
     },
   );
+  // Snoozed doses get a one-off reminder 15 minutes later.
+  store.snoozeReminderHook = (item) => notifications.scheduleSnooze(item);
   try {
     await notifications.init();
     final items = store.schedule?.items;

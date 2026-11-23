@@ -83,6 +83,30 @@ class ScheduleItem {
   final bool caution;
   final String cautionNote;
 
+  ScheduleItem copyWith({
+    String? medicineName,
+    String? dose,
+    int? hour,
+    int? minute,
+    FoodRelation? foodRelation,
+    String? explanationEn,
+    String? explanationTa,
+    bool? caution,
+    String? cautionNote,
+  }) =>
+      ScheduleItem(
+        id: id,
+        medicineName: medicineName ?? this.medicineName,
+        dose: dose ?? this.dose,
+        hour: hour ?? this.hour,
+        minute: minute ?? this.minute,
+        foodRelation: foodRelation ?? this.foodRelation,
+        explanationEn: explanationEn ?? this.explanationEn,
+        explanationTa: explanationTa ?? this.explanationTa,
+        caution: caution ?? this.caution,
+        cautionNote: cautionNote ?? this.cautionNote,
+      );
+
   String get timeLabel {
     final h = hour % 12 == 0 ? 12 : hour % 12;
     final suffix = hour < 12 ? 'AM' : 'PM';
@@ -156,10 +180,150 @@ class GeneratedSchedule {
       );
 }
 
-/// Recorded state of one dose on one day.
-enum DoseStatus { taken, skipped }
+/// Recorded state of one dose on one day — only what the user (or a
+/// reminder action) actually recorded. "Pending" and "Missed" are
+/// never stored; they are derived by [effectiveStatus].
+enum DoseStatus { taken, skipped, snoozed }
 
 extension DoseStatusName on DoseStatus {
   static DoseStatus? fromName(String? name) =>
       DoseStatus.values.where((s) => s.name == name).firstOrNull;
+
+  /// The stored status viewed as an [EffectiveDoseStatus].
+  EffectiveDoseStatus get effective => switch (this) {
+        DoseStatus.taken => EffectiveDoseStatus.taken,
+        DoseStatus.skipped => EffectiveDoseStatus.skipped,
+        DoseStatus.snoozed => EffectiveDoseStatus.snoozed,
+      };
+}
+
+/// The status of a dose as the user should see it right now: the
+/// recorded status when there is one, otherwise derived from the
+/// clock — a dose whose time has passed with nothing recorded is
+/// **missed**; one still to come is **pending**.
+enum EffectiveDoseStatus {
+  pending('Pending', 'காத்திருப்பு', 'Pending · காத்திருப்பு'),
+  taken('Taken', 'சாப்பிட்டது', 'Taken · சாப்பிட்டாச்சு'),
+  skipped('Skipped', 'தவிர்த்தது', 'Skipped · தவிர்த்தது'),
+  snoozed('Snoozed', 'ஒத்திவைத்தது', 'Snoozed · ஒத்திவைத்தது'),
+  missed('Missed', 'தவறியது', 'Missed · தவறிவிட்டது');
+
+  const EffectiveDoseStatus(this.en, this.ta, this.label);
+  final String en;
+  final String ta;
+
+  /// Combined bilingual label, e.g. "Taken · சாப்பிட்டாச்சு".
+  final String label;
+
+  static EffectiveDoseStatus fromName(String? name) =>
+      EffectiveDoseStatus.values.firstWhere(
+        (s) => s.name == name,
+        orElse: () => EffectiveDoseStatus.pending,
+      );
+}
+
+/// Derives the effective status of [item] for today: a recorded
+/// [storedStatus] always wins; otherwise the dose is missed when its
+/// time today is already past, pending when it is still ahead.
+EffectiveDoseStatus effectiveStatus(
+  ScheduleItem item,
+  DoseStatus? storedStatus,
+  DateTime now,
+) {
+  if (storedStatus != null) return storedStatus.effective;
+  final doseTime =
+      DateTime(now.year, now.month, now.day, item.hour, item.minute);
+  return now.isAfter(doseTime)
+      ? EffectiveDoseStatus.missed
+      : EffectiveDoseStatus.pending;
+}
+
+/// Safety copy shown wherever a missed dose appears. PillPaatha
+/// NEVER advises making up a missed dose with an extra/double dose.
+const String kMissedDoseAdvice =
+    'Missed — do NOT take an extra or double dose. Ask your doctor or '
+    'pharmacist. · தவறவிட்ட மருந்துக்கு இரட்டை டோஸ் எடுக்காதீர்கள்; '
+    'மருத்துவரிடம் கேளுங்கள்.';
+
+/// One entry in the dose log: a status action the user took, kept so
+/// the caregiver view can show recent activity and adherence.
+class DoseLogEntry {
+  DoseLogEntry({
+    required this.itemId,
+    required this.medicineName,
+    required this.scheduledIso,
+    required this.status,
+    required this.actedIso,
+  });
+
+  final String itemId;
+  final String medicineName;
+
+  /// When the dose was scheduled (ISO-8601, local time).
+  final String scheduledIso;
+
+  /// The status the user recorded (taken / skipped / snoozed).
+  final EffectiveDoseStatus status;
+
+  /// When the user recorded it (ISO-8601, local time).
+  final String actedIso;
+
+  DateTime get scheduledAt =>
+      DateTime.tryParse(scheduledIso) ?? DateTime.fromMillisecondsSinceEpoch(0);
+
+  Map<String, dynamic> toJson() => {
+        'itemId': itemId,
+        'medicineName': medicineName,
+        'scheduledIso': scheduledIso,
+        'status': status.name,
+        'actedIso': actedIso,
+      };
+
+  factory DoseLogEntry.fromJson(Map<String, dynamic> json) => DoseLogEntry(
+        itemId: json['itemId'] as String,
+        medicineName: json['medicineName'] as String,
+        scheduledIso: json['scheduledIso'] as String,
+        status: EffectiveDoseStatus.fromName(json['status'] as String?),
+        actedIso: json['actedIso'] as String,
+      );
+}
+
+/// Adherence over a dose log: taken / (taken + skipped + missed),
+/// as a percentage. Snoozed and pending entries do not count either
+/// way. Returns null when there is nothing measurable yet (the UI
+/// shows "—").
+double? adherencePercent(List<DoseLogEntry> log) {
+  var taken = 0, skipped = 0, missed = 0;
+  for (final e in log) {
+    switch (e.status) {
+      case EffectiveDoseStatus.taken:
+        taken++;
+      case EffectiveDoseStatus.skipped:
+        skipped++;
+      case EffectiveDoseStatus.missed:
+        missed++;
+      case EffectiveDoseStatus.pending:
+      case EffectiveDoseStatus.snoozed:
+        break;
+    }
+  }
+  final denominator = taken + skipped + missed;
+  if (denominator == 0) return null;
+  return taken * 100 / denominator;
+}
+
+/// The family/emergency contact the patient can call in one tap.
+class EmergencyContact {
+  EmergencyContact({required this.name, required this.phone});
+
+  final String name;
+  final String phone;
+
+  Map<String, dynamic> toJson() => {'name': name, 'phone': phone};
+
+  factory EmergencyContact.fromJson(Map<String, dynamic> json) =>
+      EmergencyContact(
+        name: (json['name'] as String?) ?? '',
+        phone: (json['phone'] as String?) ?? '',
+      );
 }

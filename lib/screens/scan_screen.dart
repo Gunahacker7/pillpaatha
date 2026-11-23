@@ -274,25 +274,25 @@ class _ScanScreenState extends State<ScanScreen> {
               ),
             ],
             const SizedBox(height: 24),
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Your medicines · உங்கள் மருந்துகள்',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: () => _editMedicine(),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add'),
-                ),
-              ],
+            const Text(
+              'Your medicines · உங்கள் மருந்துகள்',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
             const Text(
               'Check every name against the strip. OCR can misread — '
               'tap a row to correct it.',
               style: TextStyle(color: PillTheme.inkSoft, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _editMedicine(),
+                icon: const Icon(Icons.add),
+                label: const Text(
+                  'Add medicine manually · கைமுறையாக சேர்',
+                ),
+              ),
             ),
             const SizedBox(height: 8),
             if (medicines.isEmpty)

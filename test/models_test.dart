@@ -109,6 +109,90 @@ void main() {
       expect(store.isMissed(dose, after), isFalse);
     });
 
+    test('markStatus appends to the dose log', () async {
+      final store = AppStore(InMemoryScheduleRepository());
+      final dose = ScheduleItem(
+        id: 'd1',
+        medicineName: 'Metformin',
+        dose: '1 tablet',
+        hour: 8,
+        minute: 30,
+        foodRelation: FoodRelation.afterFood,
+        explanationEn: 'x',
+        explanationTa: 'x',
+      );
+      final day = DateTime(2026, 11, 23, 9, 0);
+      await store.markStatus(dose, DoseStatus.taken, date: day);
+      await store.markSnoozed(dose, date: day);
+      expect(store.doseLog.length, 2);
+      expect(store.doseLog.first.medicineName, 'Metformin');
+      expect(store.doseLog.first.status, EffectiveDoseStatus.taken);
+      expect(store.doseLog.first.scheduledIso,
+          DateTime(2026, 11, 23, 8, 30).toIso8601String());
+      expect(store.doseLog.last.status, EffectiveDoseStatus.snoozed);
+    });
+
+    test('dose log is capped at 500 entries, newest kept', () async {
+      final store = AppStore(InMemoryScheduleRepository());
+      final dose = ScheduleItem(
+        id: 'd1',
+        medicineName: 'Metformin',
+        dose: '1 tablet',
+        hour: 8,
+        minute: 0,
+        foodRelation: FoodRelation.afterFood,
+        explanationEn: 'x',
+        explanationTa: 'x',
+      );
+      final day = DateTime(2026, 11, 23);
+      for (var i = 0; i < AppStore.maxDoseLogEntries + 5; i++) {
+        await store.markStatus(dose, DoseStatus.taken, date: day);
+      }
+      expect(store.doseLog.length, AppStore.maxDoseLogEntries);
+    });
+
+    test('updateScheduleItem changes time and dose text', () async {
+      final store = AppStore(InMemoryScheduleRepository());
+      final dose = ScheduleItem(
+        id: 'd1',
+        medicineName: 'Metformin',
+        dose: '1 tablet',
+        hour: 8,
+        minute: 0,
+        foodRelation: FoodRelation.afterFood,
+        explanationEn: 'x',
+        explanationTa: 'x',
+      );
+      await store.setSchedule(GeneratedSchedule(
+        items: [dose],
+        isSample: false,
+        generatedAt: DateTime(2026, 11, 23),
+      ));
+      await store.updateScheduleItem(
+        dose.copyWith(hour: 21, minute: 15, dose: '2 tablets'),
+      );
+      final updated = store.schedule!.items.single;
+      expect(updated.hour, 21);
+      expect(updated.minute, 15);
+      expect(updated.dose, '2 tablets');
+      expect(updated.timeLabel, '9:15 PM');
+    });
+
+    test('emergency contact saves and loads through the repository',
+        () async {
+      final repo = InMemoryScheduleRepository();
+      final store = AppStore(repo);
+      expect(store.emergencyContact, isNull);
+      await store.setEmergencyContact(
+        EmergencyContact(name: 'Son', phone: '9876543210'),
+      );
+      expect(store.emergencyContact?.name, 'Son');
+
+      final reloaded = AppStore(repo);
+      await reloaded.load();
+      expect(reloaded.emergencyContact?.phone, '9876543210');
+    });
+
     test('schedule JSON round-trips', () {
       final s = GeneratedSchedule(
         items: [
@@ -133,6 +217,101 @@ void main() {
       expect(back.items.single.foodRelation, FoodRelation.beforeFood);
       expect(back.items.single.timeLabel, '9:30 PM');
       expect(back.isSample, isFalse);
+    });
+  });
+
+  group('effectiveStatus', () {
+    ScheduleItem doseAt(int hour, int minute) => ScheduleItem(
+          id: 'd1',
+          medicineName: 'Metformin',
+          dose: '1 tablet',
+          hour: hour,
+          minute: minute,
+          foodRelation: FoodRelation.afterFood,
+          explanationEn: 'x',
+          explanationTa: 'x',
+        );
+
+    test('stored status always wins over the clock', () {
+      final now = DateTime(2026, 11, 23, 18, 0); // 6 PM
+      // Dose was 8 AM (past) but recorded taken → taken, not missed.
+      expect(
+        effectiveStatus(doseAt(8, 0), DoseStatus.taken, now),
+        EffectiveDoseStatus.taken,
+      );
+      // Dose is 9 PM (future) but recorded skipped → skipped.
+      expect(
+        effectiveStatus(doseAt(21, 0), DoseStatus.skipped, now),
+        EffectiveDoseStatus.skipped,
+      );
+      // Snoozed stays snoozed even after its time passes.
+      expect(
+        effectiveStatus(doseAt(8, 0), DoseStatus.snoozed, now),
+        EffectiveDoseStatus.snoozed,
+      );
+    });
+
+    test('no stored status: past dose is missed, future dose is pending',
+        () {
+      final now = DateTime(2026, 11, 23, 9, 0); // 9 AM
+      expect(
+        effectiveStatus(doseAt(8, 0), null, now),
+        EffectiveDoseStatus.missed,
+      );
+      expect(
+        effectiveStatus(doseAt(21, 30), null, now),
+        EffectiveDoseStatus.pending,
+      );
+    });
+
+    test('store.effectiveStatusFor reads the stored status map', () async {
+      final store = AppStore(InMemoryScheduleRepository());
+      final dose = doseAt(8, 0);
+      final now = DateTime(2026, 11, 23, 9, 0);
+      expect(store.effectiveStatusFor(dose, now),
+          EffectiveDoseStatus.missed);
+      await store.markStatus(dose, DoseStatus.snoozed, date: now);
+      expect(store.effectiveStatusFor(dose, now),
+          EffectiveDoseStatus.snoozed);
+    });
+  });
+
+  group('adherencePercent', () {
+    DoseLogEntry entry(EffectiveDoseStatus status) => DoseLogEntry(
+          itemId: 'd1',
+          medicineName: 'Metformin',
+          scheduledIso: '2026-11-23T08:00:00.000',
+          status: status,
+          actedIso: '2026-11-23T08:05:00.000',
+        );
+
+    test('taken / (taken + skipped + missed), snoozed ignored', () {
+      final log = [
+        entry(EffectiveDoseStatus.taken),
+        entry(EffectiveDoseStatus.taken),
+        entry(EffectiveDoseStatus.taken),
+        entry(EffectiveDoseStatus.skipped),
+        entry(EffectiveDoseStatus.missed),
+        entry(EffectiveDoseStatus.snoozed),
+        entry(EffectiveDoseStatus.snoozed),
+      ];
+      expect(adherencePercent(log), 60.0);
+    });
+
+    test('null when nothing measurable (empty or snoozed-only)', () {
+      expect(adherencePercent([]), isNull);
+      expect(
+        adherencePercent([entry(EffectiveDoseStatus.snoozed)]),
+        isNull,
+      );
+    });
+
+    test('dose log JSON round-trips', () {
+      final e = entry(EffectiveDoseStatus.taken);
+      final back = DoseLogEntry.fromJson(e.toJson());
+      expect(back.medicineName, 'Metformin');
+      expect(back.status, EffectiveDoseStatus.taken);
+      expect(back.scheduledAt, DateTime(2026, 11, 23, 8, 0));
     });
   });
 }

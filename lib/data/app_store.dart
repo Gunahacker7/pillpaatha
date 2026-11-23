@@ -23,6 +23,13 @@ abstract class ScheduleRepository {
 
   Future<String> loadRawOcrText();
   Future<void> saveRawOcrText(String text);
+
+  /// The dose log: one entry per status action, oldest first.
+  Future<List<DoseLogEntry>> loadDoseLog();
+  Future<void> saveDoseLog(List<DoseLogEntry> log);
+
+  Future<EmergencyContact?> loadEmergencyContact();
+  Future<void> saveEmergencyContact(EmergencyContact? contact);
 }
 
 /// On-device implementation backed by SharedPreferences + JSON.
@@ -31,6 +38,8 @@ class LocalScheduleRepository implements ScheduleRepository {
   static const _kSchedule = 'pp_schedule';
   static const _kStatuses = 'pp_statuses';
   static const _kRawOcr = 'pp_raw_ocr';
+  static const _kDoseLog = 'pp_dose_log';
+  static const _kEmergency = 'pp_emergency_contact';
 
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
 
@@ -92,6 +101,41 @@ class LocalScheduleRepository implements ScheduleRepository {
   Future<void> saveRawOcrText(String text) async {
     (await _prefs).setString(_kRawOcr, text);
   }
+
+  @override
+  Future<List<DoseLogEntry>> loadDoseLog() async {
+    final raw = (await _prefs).getString(_kDoseLog);
+    if (raw == null) return [];
+    final list = jsonDecode(raw) as List<dynamic>;
+    return list
+        .map((e) => DoseLogEntry.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<void> saveDoseLog(List<DoseLogEntry> log) async {
+    (await _prefs).setString(
+      _kDoseLog,
+      jsonEncode(log.map((e) => e.toJson()).toList()),
+    );
+  }
+
+  @override
+  Future<EmergencyContact?> loadEmergencyContact() async {
+    final raw = (await _prefs).getString(_kEmergency);
+    if (raw == null) return null;
+    return EmergencyContact.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> saveEmergencyContact(EmergencyContact? contact) async {
+    final prefs = await _prefs;
+    if (contact == null) {
+      await prefs.remove(_kEmergency);
+    } else {
+      await prefs.setString(_kEmergency, jsonEncode(contact.toJson()));
+    }
+  }
 }
 
 /// In-memory repository for tests and previews.
@@ -100,6 +144,8 @@ class InMemoryScheduleRepository implements ScheduleRepository {
   GeneratedSchedule? _schedule;
   Map<String, String> _statuses = {};
   String _rawOcr = '';
+  List<DoseLogEntry> _doseLog = [];
+  EmergencyContact? _emergencyContact;
 
   @override
   Future<List<MedicineEntry>> loadMedicines() async => List.of(_medicines);
@@ -132,6 +178,22 @@ class InMemoryScheduleRepository implements ScheduleRepository {
   Future<void> saveRawOcrText(String text) async {
     _rawOcr = text;
   }
+
+  @override
+  Future<List<DoseLogEntry>> loadDoseLog() async => List.of(_doseLog);
+
+  @override
+  Future<void> saveDoseLog(List<DoseLogEntry> log) async {
+    _doseLog = List.of(log);
+  }
+
+  @override
+  Future<EmergencyContact?> loadEmergencyContact() async => _emergencyContact;
+
+  @override
+  Future<void> saveEmergencyContact(EmergencyContact? contact) async {
+    _emergencyContact = contact;
+  }
 }
 
 /// App-wide state: the editable medicine list, the current schedule,
@@ -145,13 +207,25 @@ class AppStore extends ChangeNotifier {
   GeneratedSchedule? schedule;
   Map<String, String> statuses = {};
   String rawOcrText = '';
+  List<DoseLogEntry> doseLog = [];
+  EmergencyContact? emergencyContact;
   bool loaded = false;
+
+  /// Set by main.dart once notifications are ready: schedules the
+  /// one-off reminder (+15 min) for a snoozed dose. Kept as a hook so
+  /// the store stays free of notification-plugin code.
+  Future<void> Function(ScheduleItem item)? snoozeReminderHook;
+
+  /// Maximum dose-log entries kept (oldest dropped beyond this).
+  static const maxDoseLogEntries = 500;
 
   Future<void> load() async {
     medicines = await _repo.loadMedicines();
     schedule = await _repo.loadSchedule();
     statuses = await _repo.loadStatuses();
     rawOcrText = await _repo.loadRawOcrText();
+    doseLog = await _repo.loadDoseLog();
+    emergencyContact = await _repo.loadEmergencyContact();
     loaded = true;
     notifyListeners();
   }
@@ -203,6 +277,22 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Replaces one schedule item (e.g. after the user edits its time
+  /// or dose text). Notifying listeners re-schedules the reminders.
+  Future<void> updateScheduleItem(ScheduleItem updated) async {
+    final current = schedule;
+    if (current == null) return;
+    schedule = GeneratedSchedule(
+      items: [
+        for (final i in current.items) if (i.id == updated.id) updated else i,
+      ],
+      isSample: current.isSample,
+      generatedAt: current.generatedAt,
+    );
+    await _repo.saveSchedule(schedule);
+    notifyListeners();
+  }
+
   // --- Dose status ---------------------------------------------------
 
   static String statusKey(DateTime date, String itemId) {
@@ -215,17 +305,62 @@ class AppStore extends ChangeNotifier {
   DoseStatus? statusFor(ScheduleItem item, DateTime date) =>
       DoseStatusName.fromName(statuses[statusKey(date, item.id)]);
 
+  /// The status to show for [item] today: recorded status wins,
+  /// otherwise missed (time passed) or pending (still ahead).
+  EffectiveDoseStatus effectiveStatusFor(ScheduleItem item, DateTime now) =>
+      effectiveStatus(item, statusFor(item, now), now);
+
   Future<void> markStatus(
     ScheduleItem item,
     DoseStatus status, {
     DateTime? date,
   }) async {
+    final day = date ?? DateTime.now();
     statuses = {
       ...statuses,
-      statusKey(date ?? DateTime.now(), item.id): status.name,
+      statusKey(day, item.id): status.name,
     };
     await _repo.saveStatuses(statuses);
+    await _appendDoseLog(item, status, day);
     notifyListeners();
+  }
+
+  /// Records a snooze and asks the notification layer (via
+  /// [snoozeReminderHook]) for a one-off reminder 15 minutes later.
+  Future<void> markSnoozed(ScheduleItem item, {DateTime? date}) async {
+    await markStatus(item, DoseStatus.snoozed, date: date);
+    final hook = snoozeReminderHook;
+    if (hook != null) {
+      try {
+        await hook(item);
+      } catch (_) {
+        // The snooze itself is recorded; the extra reminder is
+        // best-effort, like all reminders in this app.
+      }
+    }
+  }
+
+  Future<void> _appendDoseLog(
+    ScheduleItem item,
+    DoseStatus status,
+    DateTime day,
+  ) async {
+    final scheduled =
+        DateTime(day.year, day.month, day.day, item.hour, item.minute);
+    doseLog = [
+      ...doseLog,
+      DoseLogEntry(
+        itemId: item.id,
+        medicineName: item.medicineName,
+        scheduledIso: scheduled.toIso8601String(),
+        status: status.effective,
+        actedIso: DateTime.now().toIso8601String(),
+      ),
+    ];
+    if (doseLog.length > maxDoseLogEntries) {
+      doseLog = doseLog.sublist(doseLog.length - maxDoseLogEntries);
+    }
+    await _repo.saveDoseLog(doseLog);
   }
 
   Future<void> clearStatus(ScheduleItem item, {DateTime? date}) async {
@@ -237,10 +372,14 @@ class AppStore extends ChangeNotifier {
 
   /// A dose counts as missed when its time has passed today and the
   /// user recorded neither Taken nor Skip.
-  bool isMissed(ScheduleItem item, DateTime now) {
-    if (statusFor(item, now) != null) return false;
-    final doseTime = DateTime(now.year, now.month, now.day, item.hour,
-        item.minute);
-    return now.isAfter(doseTime);
+  bool isMissed(ScheduleItem item, DateTime now) =>
+      effectiveStatusFor(item, now) == EffectiveDoseStatus.missed;
+
+  // --- Emergency contact ----------------------------------------------
+
+  Future<void> setEmergencyContact(EmergencyContact? contact) async {
+    emergencyContact = contact;
+    await _repo.saveEmergencyContact(contact);
+    notifyListeners();
   }
 }
