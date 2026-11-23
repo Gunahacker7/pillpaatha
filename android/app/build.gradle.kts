@@ -62,4 +62,13 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // google_mlkit_text_recognition's Java code references the options
+    // classes of every script, but the plugin only bundles the Latin AAR.
+    // Declaring the other script AARs (same ML Kit version, 16.0.1) makes
+    // those classes present so R8's missing-class check passes. The app
+    // itself only ever requests Latin recognition at runtime.
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
 }
